@@ -1,19 +1,21 @@
+
 name: LUNA AI APK
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     permissions:
       contents: read
 
     steps:
-      - name: Kaynak kodlari indir
+      - name: Kaynak kodlarini indir
         uses: actions/checkout@v4
 
       - name: Java 17 kur
@@ -22,20 +24,45 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Android SDK kur
-        uses: android-actions/setup-android@v3
+      - name: Android SDK hazirla
+        shell: bash
+        run: |
+          set -e
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
 
-      - name: Gradle kur
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER=$(find "$SDK/cmdline-tools" -name sdkmanager -type f | head -n 1)
+          fi
+
+          if [ -z "$SDKMANAGER" ] || [ ! -f "$SDKMANAGER" ]; then
+            echo "Android sdkmanager bulunamadi"
+            exit 1
+          fi
+
+          yes | "$SDKMANAGER" --sdk_root="$SDK" --licenses || true
+
+          "$SDKMANAGER" --sdk_root="$SDK" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Gradle 8.7 kur
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
 
       - name: APK olustur
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleDebug --stacktrace --no-daemon
 
       - name: APK dosyasini kaydet
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: LUNA-AI-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: 7
